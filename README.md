@@ -30,6 +30,10 @@ Only the Clipper database is containerized. `.env` is local and untracked. No ex
 
 Production units are in `deploy/`. The web service binds localhost; the sample Nginx vhost must only be enabled after DNS points to the VPS and a TLS certificate is issued.
 
+## YouTube sign-in challenges
+
+Some public videos trigger YouTube sign-in challenges for the VPS even though other videos import normally. This is a YouTube extraction restriction, not a Clipper login error. If you are authorized to access the video, export a Netscape-format YouTube cookies file from a signed-in browser and transfer it privately to the server (never commit it or paste it into chat). Store it outside Git with owner clipper, mode 0600, set YTDLP_COOKIES_FILE in the local .env, and restart clipper-worker. Re-import the URL afterward. Cookies can expire or be invalidated; keep the file private and refresh it if required.
+
 ## Limits and data
 
 Default import limit is 30 min/350 MiB. Exports are capped at 10 min. Imports/exports queue limits are 2/3; one worker processes jobs sequentially. Source and exports are **not automatically deleted**. Watch disk headroom. Back up the PostgreSQL database with `scripts/backup-db.sh`; also back up `/opt/clipper/data/sources` and `exports` to off-VPS storage. A backup on the same disk is not disaster recovery. Do not delete source media without owner approval.

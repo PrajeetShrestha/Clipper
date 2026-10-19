@@ -10,6 +10,7 @@ import { dataDir, sourceFile, exportFile, tempFile } from '../lib/files';
 type Cue = { start: number; end: number; text: string };
 const ytdlp = process.env.YTDLP_PATH || '/opt/clipper/.venv/bin/yt-dlp';
 const ytArgs = ['--js-runtimes', 'node:/usr/bin/node'];
+if (process.env.YTDLP_COOKIES_FILE) ytArgs.push('--cookies', process.env.YTDLP_COOKIES_FILE);
 const ffmpeg = process.env.FFMPEG_PATH || '/usr/bin/ffmpeg';
 const connection = new IORedis(process.env.REDIS_URL!, { maxRetriesPerRequest: null });
 
@@ -24,6 +25,12 @@ function run(bin: string, args: string[], timeoutMs: number, onLine?: (line: str
     child.on('error', e => finish(e));
     child.on('close', code => finish(code === 0 ? undefined : new Error(`${path.basename(bin)} failed: ${error.slice(-700)}`)));
   });
+}
+function importError(error: unknown): string {
+  const message = String(error);
+  if (/Sign in to confirm you.re not a bot/i.test(message)) return 'YouTube requires sign-in for this video from our server. Ask the administrator to configure YouTube cookies, then import the URL again. Other public videos may still work.';
+  if (/cookies? (?:are|is) no longer valid|cookies? have expired/i.test(message)) return 'The configured YouTube cookies have expired. Ask the administrator to refresh them, then import again.';
+  return message.slice(0, 700);
 }
 function time(raw: string): number { const parts = raw.replace(',', '.').split(':').map(Number); return parts.reduce((a, n) => a * 60 + n, 0); }
 export function parseVtt(input: string): Cue[] {
@@ -123,7 +130,7 @@ heartbeat();
 setInterval(heartbeat, 30000).unref();
 const worker = new Worker('clipper', async (job: Job) => {
   if (job.name === 'import') {
-    try { await importProject(job.data.id); } catch (e) { await db.project.update({ where: { id: job.data.id }, data: { status: 'failed', error: String(e).slice(0, 700) } }); throw e; }
+    try { await importProject(job.data.id); } catch (e) { await db.project.update({ where: { id: job.data.id }, data: { status: 'failed', error: importError(e) } }); throw e; }
   } else if (job.name === 'export') {
     try { await exportClip(job.data.id); } catch (e) { await db.export.update({ where: { id: job.data.id }, data: { status: 'failed', error: String(e).slice(0, 700) } }); throw e; }
   }
