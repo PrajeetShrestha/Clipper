@@ -16,6 +16,7 @@ const ytArgs = ['--js-runtimes', 'node:/usr/bin/node'];
 if (process.env.YTDLP_COOKIES_FILE) ytArgs.push('--cookies', process.env.YTDLP_COOKIES_FILE);
 const ffmpeg = process.env.FFMPEG_PATH || '/usr/bin/ffmpeg';
 const connection = new IORedis(process.env.REDIS_URL!, { maxRetriesPerRequest: null });
+const noAudioMessage = 'This video has no audio track. Clipper currently finds moments from speech, so no clips can be generated from this file. Upload a version with spoken audio.';
 
 function run(bin: string, args: string[], timeoutMs: number, onLine?: (line: string) => void): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -75,7 +76,9 @@ async function importProject(id: string) {
   const duration = Number(probe.format?.duration || 0);
   const maxDuration = Number(process.env.MAX_SOURCE_DURATION || 3600);
   if (!Number.isFinite(duration) || duration <= 0 || duration > maxDuration || !probe.streams?.some((s: { codec_type: string }) => s.codec_type === 'video')) throw new Error(`Video must contain a video stream and be under ${Math.round(maxDuration / 60)} minutes`);
-  await db.project.update({ where: { id }, data: { duration, sourcePath: media, status: 'ready', analysisStatus: 'queued', analysisProgress: 0, analysisError: null } });
+  const hasAudio = probe.streams.some((s: { codec_type: string }) => s.codec_type === 'audio');
+  await db.project.update({ where: { id }, data: { duration, sourcePath: media, status: 'ready', analysisStatus: hasAudio ? 'queued' : 'failed', analysisProgress: 0, analysisError: hasAudio ? null : noAudioMessage } });
+  if (!hasAudio) return;
   try {
     await queue.add('analyze', { id }, { jobId: `analyze-${id}`, attempts: 1 });
   } catch (error) {
@@ -119,6 +122,8 @@ type Suggestion = { start: number; end: number; title: string; reason: string; s
 async function analyzeProject(id: string) {
   const project = await db.project.findUniqueOrThrow({ where: { id } });
   if (!project.sourcePath || !project.duration) throw new Error('Source video missing');
+  const probe = JSON.parse(await run(process.env.FFPROBE_PATH || '/usr/bin/ffprobe', ['-v', 'error', '-show_entries', 'stream=codec_type', '-of', 'json', project.sourcePath], 30000));
+  if (!probe.streams?.some((s: { codec_type: string }) => s.codec_type === 'audio')) throw new Error(noAudioMessage);
   await db.project.update({ where: { id }, data: { analysisStatus: 'processing', analysisProgress: 0, analysisError: null } });
   const parts: TranscriptPart[] = [];
   const chunkSeconds = 45;
