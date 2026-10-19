@@ -7,13 +7,13 @@ import path from 'path';
 import { db } from '../lib/db';
 import { dataDir, sourceFile, exportFile, tempFile } from '../lib/files';
 import { downloadDirectVideo, maxSourceBytes } from '../lib/direct-video';
+import { canonicalUrl } from '../lib/youtube';
 import { openclawAI } from '../lib/openclaw-ai';
 import { queue } from '../lib/queue';
 
 type Cue = { start: number; end: number; text: string };
 const ytdlp = process.env.YTDLP_PATH || '/opt/clipper/.venv/bin/yt-dlp';
-const ytArgs = ['--js-runtimes', 'node:/usr/bin/node'];
-if (process.env.YTDLP_COOKIES_FILE) ytArgs.push('--cookies', process.env.YTDLP_COOKIES_FILE);
+const ytCookieArgs = process.env.YTDLP_COOKIES_FILE ? ['--cookies', process.env.YTDLP_COOKIES_FILE] : [];
 const ffmpeg = process.env.FFMPEG_PATH || '/usr/bin/ffmpeg';
 const connection = new IORedis(process.env.REDIS_URL!, { maxRetriesPerRequest: null });
 const noAudioMessage = 'This video has no audio track. Clipper currently finds moments from speech, so no clips can be generated from this file. Upload a version with spoken audio.';
@@ -68,8 +68,22 @@ async function importProject(id: string) {
   const maxBytes = maxSourceBytes;
   const available = statfsSync(dataDir); const free = available.bavail * available.bsize;
   if (free < maxBytes * 2) throw new Error('Insufficient storage for import and export');
-  if (project.youtubeId) throw new Error('YouTube URL import is no longer supported; upload a video file instead');
-  if (project.sourceUrl) await downloadDirectVideo(project.sourceUrl, media);
+  if (project.youtubeId) {
+    const url = canonicalUrl(project.youtubeId);
+    const maxDuration = Number(process.env.MAX_SOURCE_DURATION || 3600);
+    const common = ['--ignore-config', '--no-playlist', '--js-runtimes', 'node:/usr/bin/node', '--socket-timeout', '20', '--retries', '2', '--fragment-retries', '2', ...ytCookieArgs];
+    try {
+      const info = JSON.parse(await run(ytdlp, [...common, '--dump-single-json', '--skip-download', url], 120000));
+      const duration = Number(info.duration);
+      if (!Number.isFinite(duration) || duration <= 0 || duration > maxDuration) throw new Error(`YouTube video must be under ${Math.round(maxDuration / 60)} minutes`);
+      const title = String(info.title || 'YouTube video').replace(/[\x00-\x1f]/g, ' ').slice(0, 300);
+      await db.project.update({ where: { id }, data: { title } });
+      await run(ytdlp, [...common, '--no-overwrites', '--format', 'b[ext=mp4][height<=720]/b[height<=720]/b', '--max-filesize', String(maxBytes), '--remux-video', 'mp4', '--output', media.replace(/\.mp4$/, '.%(ext)s'), url], 1800000);
+    } catch (error) {
+      await Promise.all(['mp4', 'webm', 'mkv'].flatMap(ext => ['', '.part', '.ytdl'].map(suffix => fs.rm(media.replace(/\.mp4$/, `.${ext}${suffix}`), { force: true }))));
+      throw error;
+    }
+  } else if (project.sourceUrl) await downloadDirectVideo(project.sourceUrl, media);
   const stat = await fs.stat(media);
   if (!stat.size || stat.size > maxBytes) throw new Error('Source exceeds size limit');
   const probe = JSON.parse(await run(process.env.FFPROBE_PATH || '/usr/bin/ffprobe', ['-v', 'error', '-show_entries', 'format=duration:stream=codec_type', '-of', 'json', media], 30000));

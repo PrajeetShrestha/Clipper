@@ -1,5 +1,6 @@
 export function parseYouTubeUrl(raw: string): string | null {
   let u: URL; try { u = new URL(raw); } catch { return null; }
+  if (!['http:', 'https:'].includes(u.protocol) || u.username || u.password || u.port) return null;
   const host = u.hostname.toLowerCase().replace(/^www\./, '').replace(/^m\./, '');
   let id: string | null = null;
   if (host === 'youtu.be') id = u.pathname.slice(1).split('/')[0];

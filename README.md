@@ -1,12 +1,12 @@
 # Clipper
 
-Node-first app for creating MP4 clips from uploaded videos or direct video-file URLs.
+Node-first app for creating MP4 clips from uploaded videos, YouTube links, or direct video-file URLs.
 
 ## Workflow
 
 Password login is currently disabled. Anyone with the site URL can access projects and media.
 
-Upload a video file from your browser, or paste a public direct `.mp4`, `.m4v`, `.mov`, `.webm`, or `.mkv` file URL → Clipper validates it with ffprobe → OpenClaw transcribes and ranks speech moments → FFmpeg automatically renders up to five vertical MP4 clips for download. Existing YouTube projects and caption tracks remain available, but new YouTube and streaming-platform links are not imported. For those sources, download a video you are permitted to use and upload the file. New imports do not have burned-in captions; transcript TXT/SRT downloads are available after analysis.
+Upload a video file from your browser, paste a YouTube video link, or paste a public direct `.mp4`, `.m4v`, `.mov`, `.webm`, or `.mkv` file URL → Clipper validates it with ffprobe → OpenClaw transcribes and ranks speech moments → FFmpeg automatically renders up to five vertical MP4 clips for download. YouTube links are extracted by yt-dlp in the worker; access can vary by video or server IP. Other streaming-platform links are not yet supported. If a link is blocked, upload a video file you are permitted to use. YouTube captions are not retrieved in this flow. New imports do not have burned-in captions; transcript TXT/SRT downloads are available after analysis.
 
 Browser uploads stream to disk rather than buffering whole files. Direct URL downloads are limited to public network addresses, validated across redirects, size-capped, and probed before use.
 
@@ -31,6 +31,10 @@ Only the Clipper database is containerized. `.env` is local and untracked. No ex
 
 Production units are in `deploy/`. The web service binds localhost; the sample Nginx vhost must only be enabled after DNS points to the VPS and a TLS certificate is issued.
 
+## YouTube extractor
+
+Install `yt-dlp` and `yt-dlp-ejs` in `/opt/clipper/.venv`, with Node available at `/usr/bin/node`. The worker runs extraction in the background, validates duration before downloading, and caps the download to `MAX_SOURCE_BYTES`. A server-side YouTube bot challenge can still block particular links. If using an authorized Netscape cookies file, put it outside Git with access restricted to the `clipper` worker and set `YTDLP_COOKIES_FILE` in `.env`; cookies must never be pasted into logs or chat. No YouTube caption track is imported; AI transcription and clip rendering remain the downstream path.
+
 ## Limits and data
 
 Default import limit is 60 min/1 GiB (configurable with `MAX_SOURCE_DURATION` and `MAX_SOURCE_BYTES`). Exports are capped at 10 min. Imports are limited to two concurrent submissions; one worker processes import, analysis, and render jobs sequentially. Source and exports are **not automatically deleted**. Watch disk headroom. Back up the PostgreSQL database with `scripts/backup-db.sh`; also back up `/opt/clipper/data/sources` and `exports` to off-VPS storage. A backup on the same disk is not disaster recovery. Do not delete source media without owner approval.
@@ -39,7 +43,7 @@ Default import limit is 60 min/1 GiB (configurable with `MAX_SOURCE_DURATION` an
 
 - `npm run typecheck && npm run build`
 - `curl http://127.0.0.1:3120/api/health`
-- Browser flow: file upload or direct video-file URL → automatic analysis → automatically rendered clips → download.
+- Browser flow: file upload, YouTube video link, or direct video-file URL → automatic analysis → automatically rendered clips → download.
 - To check logs: `journalctl -u clipper-web -u clipper-worker -n 100 --no-pager`; `docker logs clipper-db`.
 
 ## Production deployment
