@@ -40,3 +40,13 @@ Default import limit is 30 min/350 MiB. Exports are capped at 10 min. Imports/ex
 - `curl http://127.0.0.1:3120/api/health`
 - Authenticated browser flow: URL → ready project with caption cues → edit/save → export → download.
 - To check logs: `journalctl -u clipper-web -u clipper-worker -n 100 --no-pager`; `docker logs clipper-db`.
+
+## Production deployment
+
+`https://clipper.codekunda.com` is served through Nginx/Let's Encrypt. The dedicated web and worker systemd units run on the VPS; PostgreSQL data and media stay outside Git.
+
+Every push to `main` runs `.github/workflows/deploy.yml`: `npm ci`, typecheck, build, then an SSH deployment of that exact commit. The VPS accepts the Actions key only for `/usr/local/sbin/clipper-deploy` (forced command; no shell or forwarding). That command refuses dirty/non-fast-forward deployments, backs up the database before code updates, installs/builds, runs Prisma migrations, restarts both units, and checks health. `workflow_dispatch` can rerun deployment of `main`.
+
+GitHub repository setup: add the private key held at `/root/.ssh/clipper_ci` as the `VPS_SSH_KEY` Actions secret, then allow the `production` environment for the deploy job. Never commit the key or production `.env`. The VPS SSH host key is pinned in the workflow. If the VPS host key changes, verify and update that pin before redeploying.
+
+For manual deployment, use the restricted SSH key with the full commit SHA as the remote command, or set `SSH_ORIGINAL_COMMAND=<sha>` when running `/usr/local/sbin/clipper-deploy` locally as root. Check `https://clipper.codekunda.com/api/health` after rollout.

@@ -1,0 +1,65 @@
+name: Verify and deploy Clipper
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clipper-production
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+        env:
+          DATABASE_URL: postgresql://clipper:placeholder@127.0.0.1:5434/clipper
+          REDIS_URL: redis://127.0.0.1:6379
+          DATA_DIR: /tmp/clipper-ci
+          ADMIN_PASSWORD: ci-only-placeholder
+          SESSION_SECRET: ci-only-placeholder
+
+  deploy-ready:
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - id: check
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          if test -n "$VPS_SSH_KEY"; then echo 'ready=true' >> "$GITHUB_OUTPUT"; else echo 'ready=false' >> "$GITHUB_OUTPUT"; fi
+
+  deploy:
+    if: github.ref == 'refs/heads/main' && needs.deploy-ready.outputs.ready == 'true'
+    needs: [verify, deploy-ready]
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Install pinned VPS host key
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' '46.62.234.194 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDyqyeuELOK5/B/mW4gpabYjdqALZezug+FOUv8IpFv/' > ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Deploy verified commit
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          test -n "$VPS_SSH_KEY"
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/clipper_ci
+          chmod 600 ~/.ssh/clipper_ci
+          ssh -i ~/.ssh/clipper_ci -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            root@46.62.234.194 "$GITHUB_SHA"
