@@ -60,4 +60,3 @@ ALTER TABLE "CaptionTrack" ADD CONSTRAINT "CaptionTrack_projectId_fkey" FOREIGN 
 
 -- AddForeignKey
 ALTER TABLE "Export" ADD CONSTRAINT "Export_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
