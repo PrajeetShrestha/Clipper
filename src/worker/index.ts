@@ -6,6 +6,7 @@ import { promises as fs, statfsSync } from 'fs';
 import path from 'path';
 import { db } from '../lib/db';
 import { dataDir, sourceFile, exportFile, tempFile } from '../lib/files';
+import { downloadDirectVideo, maxSourceBytes } from '../lib/direct-video';
 
 type Cue = { start: number; end: number; text: string };
 const ytdlp = process.env.YTDLP_PATH || '/opt/clipper/.venv/bin/yt-dlp';
@@ -60,39 +61,19 @@ function chooseLanguage(info: any): { lang: string; source: string } | null {
 async function importProject(id: string) {
   const project = await db.project.findUniqueOrThrow({ where: { id } });
   await db.project.update({ where: { id }, data: { status: 'importing', error: null } });
-  const info = JSON.parse(await run(ytdlp, [...ytArgs, '--dump-single-json', '--skip-download', '--no-playlist', project.sourceUrl], 120000));
-  const duration = Number(info.duration || 0);
-  const maxDuration = Number(process.env.MAX_SOURCE_DURATION || 1800);
-  if (!duration || duration > maxDuration) throw new Error(`Video must be under ${Math.round(maxDuration / 60)} minutes`);
-  if (info.is_live || info.live_status === 'is_live') throw new Error('Live streams are not supported');
-  const track = chooseLanguage(info);
+  const media = sourceFile(id);
+  const maxBytes = maxSourceBytes;
   const available = statfsSync(dataDir); const free = available.bavail * available.bsize;
-  const maxBytes = Number(process.env.MAX_SOURCE_BYTES || 536870912);
   if (free < maxBytes * 2) throw new Error('Insufficient storage for import and export');
-  await db.project.update({ where: { id }, data: { title: String(info.title || 'Untitled').slice(0, 300), duration, thumbnailUrl: typeof info.thumbnail === 'string' ? info.thumbnail : null, language: track?.lang || null } });
-  const template = path.join(dataDir, 'sources', `${id}.%(ext)s`);
-  await run(ytdlp, [...ytArgs, '--no-playlist', '--max-filesize', String(maxBytes), '-f', 'bv*[height<=720][ext=mp4]+ba[ext=m4a]/b[height<=720][ext=mp4]', '--merge-output-format', 'mp4', '-o', template, project.sourceUrl], 900000);
-  let media = sourceFile(id);
-  try { await fs.stat(media); } catch {
-    const files = await fs.readdir(path.join(dataDir, 'sources'));
-    const found = files.find(f => f.startsWith(`${id}.`) && !f.endsWith('.part'));
-    if (!found) throw new Error('YouTube download produced no media file');
-    media = path.join(dataDir, 'sources', found);
-  }
-  if ((await fs.stat(media)).size > maxBytes) { await fs.rm(media); throw new Error('Source exceeds storage limit'); }
-  if (track) {
-    try {
-      await run(ytdlp, [...ytArgs, '--skip-download', '--no-playlist', '--write-subs', '--write-auto-subs', '--sub-langs', track.lang, '--sub-format', 'vtt', '-o', template, project.sourceUrl], 120000);
-      const files = await fs.readdir(path.join(dataDir, 'sources'));
-      const vtt = files.find(f => f.startsWith(`${id}.`) && f.endsWith('.vtt'));
-      if (vtt) {
-        const cues = parseVtt(await fs.readFile(path.join(dataDir, 'sources', vtt), 'utf8'));
-        await fs.rm(path.join(dataDir, 'sources', vtt));
-        if (cues.length) await db.captionTrack.upsert({ where: { projectId_language: { projectId: id, language: track.lang } }, update: { cues, source: track.source }, create: { projectId: id, language: track.lang, source: track.source, cues } });
-      }
-    } catch (e) { console.error('Caption retrieval failed:', id, e); }
-  }
-  await db.project.update({ where: { id }, data: { sourcePath: media, status: 'ready' } });
+  if (project.youtubeId) throw new Error('YouTube URL import is no longer supported; upload a video file instead');
+  if (project.sourceUrl) await downloadDirectVideo(project.sourceUrl, media);
+  const stat = await fs.stat(media);
+  if (!stat.size || stat.size > maxBytes) throw new Error('Source exceeds size limit');
+  const probe = JSON.parse(await run(process.env.FFPROBE_PATH || '/usr/bin/ffprobe', ['-v', 'error', '-show_entries', 'format=duration:stream=codec_type', '-of', 'json', media], 30000));
+  const duration = Number(probe.format?.duration || 0);
+  const maxDuration = Number(process.env.MAX_SOURCE_DURATION || 3600);
+  if (!Number.isFinite(duration) || duration <= 0 || duration > maxDuration || !probe.streams?.some((s: { codec_type: string }) => s.codec_type === 'video')) throw new Error(`Video must contain a video stream and be under ${Math.round(maxDuration / 60)} minutes`);
+  await db.project.update({ where: { id }, data: { duration, sourcePath: media, status: 'ready' } });
 }
 function assTime(seconds: number) { const cs = Math.round(seconds * 100); const h = Math.floor(cs / 360000); const m = Math.floor(cs / 6000) % 60; const s = Math.floor(cs / 100) % 60; return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(cs % 100).padStart(2, '0')}`; }
 function assText(text: string) { return text.replace(/[{}]/g, '').replace(/\\/g, '／').replace(/\r?\n/g, '\\N').slice(0, 500); }

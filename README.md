@@ -1,19 +1,19 @@
 # Clipper
 
-Private Node-first app for creating captioned MP4 clips from YouTube URLs.
+Private Node-first app for creating MP4 clips from uploaded videos or direct video-file URLs.
 
 ## Workflow
 
-Paste a public YouTube URL → Node/BullMQ worker retrieves video metadata, source media, and the best available timed caption track using yt-dlp → preview and edit cue text/timestamps → select in/out points and aspect ratio → worker trims/crops/burns captions with FFmpeg → download MP4.
+Upload a video file from your browser, or paste a public direct `.mp4`, `.m4v`, `.mov`, `.webm`, or `.mkv` file URL → Clipper validates it with ffprobe → preview, select in/out points and aspect ratio → FFmpeg exports an MP4 clip. Existing YouTube projects and their caption tracks remain available, but new YouTube and streaming-platform links are not imported. For those sources, download a video you are permitted to use and upload the file. New imports do not automatically generate captions; export with captions disabled.
 
-Videos without accessible captions still import; export can be performed with captions disabled. This is *not* speech-to-text. YouTube availability can change; imports may fail for unavailable, restricted, DRM, or rate-limited videos. Import only videos you may use.
+Browser uploads stream to disk rather than buffering whole files. Direct URL downloads are limited to public network addresses, validated across redirects, size-capped, and probed before use.
 
 ## Stack and layout
 
 - Next.js 15 / TypeScript UI and API
 - PostgreSQL 16 / Prisma (dedicated `clipper-db` container)
 - Redis / BullMQ (one worker, one export at a time)
-- yt-dlp with local EJS solver; FFmpeg 6.1
+- FFmpeg/ffprobe 6.1
 - Persistent source/export data: `/opt/clipper/data` (outside the app build)
 - Local web listener: `127.0.0.1:3120`
 
@@ -21,28 +21,23 @@ Only the Clipper database is containerized. `.env` is local and untracked. No ex
 
 ## Local setup
 
-1. Install Node 24, FFmpeg, Redis, Python venv, Docker Compose.
+1. Install Node 24, FFmpeg/ffprobe, Redis, Docker Compose.
 2. Copy `.env.example` to `.env`, set strong unique secrets and actual paths. Keep mode 0600.
-3. `python3 -m venv .venv && .venv/bin/pip install yt-dlp yt-dlp-ejs`
-4. `npm ci && docker compose up -d db`
-5. `npx prisma migrate deploy` (or `npx prisma db push` for a new development DB)
-6. `npm run build`; start web with `npm start` and worker with `npm run worker`.
+3. `npm ci && docker compose up -d db`
+4. `npx prisma migrate deploy` (or `npx prisma db push` for a new development DB)
+5. `npm run build`; start web with `npm start` and worker with `npm run worker`.
 
 Production units are in `deploy/`. The web service binds localhost; the sample Nginx vhost must only be enabled after DNS points to the VPS and a TLS certificate is issued.
 
-## YouTube sign-in challenges
-
-Some public videos trigger YouTube sign-in challenges for the VPS even though other videos import normally. This is a YouTube extraction restriction, not a Clipper login error. If you are authorized to access the video, export a Netscape-format YouTube cookies file from a signed-in browser and transfer it privately to the server (never commit it or paste it into chat). Store it outside Git with owner clipper, mode 0600, set YTDLP_COOKIES_FILE in the local .env, and restart clipper-worker. Re-import the URL afterward. Cookies can expire or be invalidated; keep the file private and refresh it if required.
-
 ## Limits and data
 
-Default import limit is 30 min/350 MiB. Exports are capped at 10 min. Imports/exports queue limits are 2/3; one worker processes jobs sequentially. Source and exports are **not automatically deleted**. Watch disk headroom. Back up the PostgreSQL database with `scripts/backup-db.sh`; also back up `/opt/clipper/data/sources` and `exports` to off-VPS storage. A backup on the same disk is not disaster recovery. Do not delete source media without owner approval.
+Default import limit is 60 min/1 GiB (configurable with `MAX_SOURCE_DURATION` and `MAX_SOURCE_BYTES`). Exports are capped at 10 min. Imports/exports queue limits are 2/3; one worker processes jobs sequentially. Source and exports are **not automatically deleted**. Watch disk headroom. Back up the PostgreSQL database with `scripts/backup-db.sh`; also back up `/opt/clipper/data/sources` and `exports` to off-VPS storage. A backup on the same disk is not disaster recovery. Do not delete source media without owner approval.
 
 ## Verification
 
 - `npm run typecheck && npm run build`
 - `curl http://127.0.0.1:3120/api/health`
-- Authenticated browser flow: URL → ready project with caption cues → edit/save → export → download.
+- Authenticated browser flow: file upload or direct video-file URL → ready project → export without captions → download.
 - To check logs: `journalctl -u clipper-web -u clipper-worker -n 100 --no-pager`; `docker logs clipper-db`.
 
 ## Production deployment

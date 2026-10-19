@@ -7,7 +7,7 @@ datasource db {
 }
 model Project {
   id String @id @default(cuid())
-  youtubeId String
+  youtubeId String?
   sourceUrl String
   title String @default("Importing…")
   duration Float @default(0)
