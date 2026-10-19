@@ -8,6 +8,7 @@ import { db } from '../lib/db';
 import { dataDir, sourceFile, exportFile, tempFile } from '../lib/files';
 import { downloadDirectVideo, maxSourceBytes } from '../lib/direct-video';
 import { openclawAI } from '../lib/openclaw-ai';
+import { queue } from '../lib/queue';
 
 type Cue = { start: number; end: number; text: string };
 const ytdlp = process.env.YTDLP_PATH || '/opt/clipper/.venv/bin/yt-dlp';
@@ -74,7 +75,12 @@ async function importProject(id: string) {
   const duration = Number(probe.format?.duration || 0);
   const maxDuration = Number(process.env.MAX_SOURCE_DURATION || 3600);
   if (!Number.isFinite(duration) || duration <= 0 || duration > maxDuration || !probe.streams?.some((s: { codec_type: string }) => s.codec_type === 'video')) throw new Error(`Video must contain a video stream and be under ${Math.round(maxDuration / 60)} minutes`);
-  await db.project.update({ where: { id }, data: { duration, sourcePath: media, status: 'ready' } });
+  await db.project.update({ where: { id }, data: { duration, sourcePath: media, status: 'ready', analysisStatus: 'queued', analysisProgress: 0, analysisError: null } });
+  try {
+    await queue.add('analyze', { id }, { jobId: `analyze-${id}`, attempts: 1 });
+  } catch (error) {
+    await db.project.update({ where: { id }, data: { analysisStatus: 'failed', analysisError: `Could not schedule analysis: ${String(error).slice(0, 300)}` } });
+  }
 }
 function assTime(seconds: number) { const cs = Math.round(seconds * 100); const h = Math.floor(cs / 360000); const m = Math.floor(cs / 6000) % 60; const s = Math.floor(cs / 100) % 60; return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(cs % 100).padStart(2, '0')}`; }
 function assText(text: string) { return text.replace(/[{}]/g, '').replace(/\\/g, '／').replace(/\r?\n/g, '\\N').slice(0, 500); }
@@ -139,7 +145,18 @@ async function analyzeProject(id: string) {
   if (!Array.isArray(parsed)) throw new Error('Invalid clip suggestions');
   const suggestions: Suggestion[] = parsed.slice(0, 5).map((x: any) => ({ start: Number(x.start), end: Number(x.end), title: String(x.title || 'Suggested clip').slice(0, 100), reason: String(x.reason || '').slice(0, 400), score: Math.max(1, Math.min(100, Math.round(Number(x.score) || 50))) })).filter(x => Number.isFinite(x.start) && Number.isFinite(x.end) && x.start >= 0 && x.end > x.start && x.end <= project.duration + 0.1 && x.end - x.start <= 600);
   if (!suggestions.length) throw new Error('No valid moments were suggested');
-  await db.project.update({ where: { id }, data: { analysisStatus: 'complete', analysisProgress: 100, analysisTranscript: parts, suggestions } });
+  // Persist the suggestions first so a queue failure can be shown without losing the analysis.
+  await db.project.update({ where: { id }, data: { analysisProgress: 95, analysisTranscript: parts, suggestions } });
+  for (const suggestion of suggestions) {
+    const exp = await db.export.create({ data: { projectId: id, start: suggestion.start, end: suggestion.end, ratio: '9:16', captions: false } });
+    try {
+      await queue.add('export', { id: exp.id }, { jobId: `export-${exp.id}` });
+    } catch (error) {
+      await db.export.update({ where: { id: exp.id }, data: { status: 'failed', error: `Could not schedule export: ${String(error).slice(0, 300)}` } });
+      throw error;
+    }
+  }
+  await db.project.update({ where: { id }, data: { analysisStatus: 'complete', analysisProgress: 100 } });
 }
 
 const heartbeat = () => { void connection.set('clipper:worker:alive', String(Date.now()), 'EX', 90).catch(e => console.error('Heartbeat failed', e)); };
