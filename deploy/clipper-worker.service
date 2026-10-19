@@ -1,7 +1,7 @@
 [Unit]
 Description=Clipper media worker
-After=network-online.target docker.service redis-server.service
-Requires=docker.service
+After=network-online.target docker.service redis-server.service clipper-ai.service
+Requires=docker.service clipper-ai.service
 [Service]
 Type=simple
 User=clipper

@@ -3,3 +3,4 @@
 .caption-overlay{position:absolute;bottom:54px;left:8%;right:8%;text-align:center;color:white;font-size:clamp(16px,2vw,27px);font-weight:800;line-height:1.25;text-shadow:0 2px 4px #000,0 0 7px #000;pointer-events:none}
 
 .import form + form{border-top:1px solid #343c39;margin-top:16px;padding-top:16px}.import input[type=file]{font-size:12px}.import input[type=file]::file-selector-button{background:#242735;color:#eef0f8;border:0;border-radius:6px;padding:6px;margin-right:8px}
+.suggestions{padding-top:24px}.suggestions .section-title{flex-wrap:wrap}.suggestion{display:flex;align-items:center;justify-content:space-between;gap:15px;padding:14px 0;border-top:1px solid #2a2e3c}.suggestion strong,.suggestion small{display:block}.suggestion small{color:#b9bdcb;margin-top:4px}.suggestion p{color:#a2a5b7;margin:6px 0 0;font-size:13px}.transcript-links{display:flex;gap:16px;margin:12px 0}.transcript-links a{color:#dafa73;font-size:13px;text-decoration:underline}

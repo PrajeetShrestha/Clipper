@@ -46,8 +46,14 @@ Default import limit is 60 min/1 GiB (configurable with `MAX_SOURCE_DURATION` an
 
 `https://clipper.codekunda.com` is served through Nginx/Let's Encrypt. The dedicated web and worker systemd units run on the VPS; PostgreSQL data and media stay outside Git.
 
-Every push to `main` runs `.github/workflows/deploy.yml`: `npm ci`, typecheck, build, then an SSH deployment of that exact commit. The VPS accepts the Actions key only for `/usr/local/sbin/clipper-deploy` (forced command; no shell or forwarding). That command refuses dirty/non-fast-forward deployments, backs up the database before code updates, installs/builds, runs Prisma migrations, restarts both units, and checks health. `workflow_dispatch` can rerun deployment of `main`.
+Every push to `main` runs `.github/workflows/deploy.yml`: `npm ci`, typecheck, build, then an SSH deployment of that exact commit. The VPS accepts the Actions key only for `/usr/local/sbin/clipper-deploy` (forced command; no shell or forwarding). That command refuses dirty/non-fast-forward deployments, backs up the database before code updates, installs/builds, runs Prisma migrations, restarts the AI bridge, worker, and web units, and checks health. `workflow_dispatch` can rerun deployment of `main`.
 
 GitHub repository setup: add the private key held at `/root/.ssh/clipper_ci` as the `VPS_SSH_KEY` Actions secret, then allow the `production` environment for the deploy job. Never commit the key or production `.env`. The VPS SSH host key is pinned in the workflow. If the VPS host key changes, verify and update that pin before redeploying.
 
 For manual deployment, use the restricted SSH key with the full commit SHA as the remote command, or set `SSH_ORIGINAL_COMMAND=<sha>` when running `/usr/local/sbin/clipper-deploy` locally as root. Check `https://clipper.codekunda.com/api/health` after rollout.
+
+## AI clip suggestions
+
+The worker extracts 45-second audio windows, sends them over a `clipper`-group Unix socket to the dedicated `clipper-ai` service, and uses the VPS OpenClaw CLI for transcription and text ranking. OpenClaw credentials remain in the root-owned OpenClaw state; they are not copied into Clipper. Users review suggested start/end times before export. Transcript TXT/SRT timestamps are approximate window boundaries, not word-aligned. Speech-based ranking does not inspect visual action.
+
+Install `deploy/clipper-ai.service` as `/etc/systemd/system/clipper-ai.service`, then `systemctl daemon-reload && systemctl enable --now clipper-ai`. The broker expects the local OpenClaw CLI at `/root/.openclaw/tmp/agent-cli/openclaw` and the `clipper_dev` agent to have working model and audio inference.

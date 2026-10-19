@@ -1,0 +1,17 @@
+[Unit]
+Description=Clipper OpenClaw inference bridge
+After=network-online.target
+[Service]
+Type=simple
+User=root
+Group=clipper
+WorkingDirectory=/opt/clipper
+ExecStart=/usr/bin/node /opt/clipper/scripts/openclaw-broker.cjs
+RuntimeDirectory=clipper-ai
+RuntimeDirectoryMode=0755
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

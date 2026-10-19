@@ -16,6 +16,11 @@ model Project {
   error String?
   sourcePath String?
   language String?
+  analysisStatus String @default("idle")
+  analysisProgress Int @default(0)
+  analysisError String?
+  analysisTranscript Json?
+  suggestions Json?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   tracks CaptionTrack[]
