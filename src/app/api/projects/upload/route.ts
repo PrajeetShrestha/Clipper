@@ -3,13 +3,11 @@ import { createWriteStream, promises as fs, statfsSync } from 'node:fs';
 import { once } from 'node:events';
 import { basename } from 'node:path';
 import { db } from '@/lib/db';
-import { guard } from '@/lib/auth';
 import { queue } from '@/lib/queue';
 import { dataDir, sourceFile } from '@/lib/files';
 import { maxSourceBytes } from '@/lib/direct-video';
 export const runtime = 'nodejs';
 export async function POST(req: NextRequest) {
-  const denied = await guard(); if (denied) return denied;
   if (!req.body) return NextResponse.json({ error: 'Choose a video file' }, { status: 400 });
   const length = Number(req.headers.get('content-length') || 0);
   if (length > maxSourceBytes) return NextResponse.json({ error: 'File exceeds size limit' }, { status: 413 });

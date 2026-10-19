@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { guard } from '@/lib/auth';
 import { z } from 'zod';
 const cue = z.object({ start: z.number().finite().min(0), end: z.number().finite().positive(), text: z.string().min(1).max(500) }).refine(c => c.end > c.start);
 const bodySchema = z.object({ language: z.string().min(1), cues: z.array(cue).max(10000) });
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const denied = await guard(); if (denied) return denied;
   const { id } = await params; const parsed = bodySchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: 'Invalid caption data' }, { status: 400 });
   const project = await db.project.findUnique({ where: { id } });

@@ -1,8 +1,10 @@
 # Clipper
 
-Private Node-first app for creating MP4 clips from uploaded videos or direct video-file URLs.
+Node-first app for creating MP4 clips from uploaded videos or direct video-file URLs.
 
 ## Workflow
+
+Password login is currently disabled. Anyone with the site URL can access projects and media.
 
 Upload a video file from your browser, or paste a public direct `.mp4`, `.m4v`, `.mov`, `.webm`, or `.mkv` file URL → Clipper validates it with ffprobe → preview, select in/out points and aspect ratio → FFmpeg exports an MP4 clip. Existing YouTube projects and their caption tracks remain available, but new YouTube and streaming-platform links are not imported. For those sources, download a video you are permitted to use and upload the file. New imports do not automatically generate captions; export with captions disabled.
 
@@ -37,7 +39,7 @@ Default import limit is 60 min/1 GiB (configurable with `MAX_SOURCE_DURATION` an
 
 - `npm run typecheck && npm run build`
 - `curl http://127.0.0.1:3120/api/health`
-- Authenticated browser flow: file upload or direct video-file URL → ready project → export without captions → download.
+- Browser flow: file upload or direct video-file URL → ready project → export without captions → download.
 - To check logs: `journalctl -u clipper-web -u clipper-worker -n 100 --no-pager`; `docker logs clipper-db`.
 
 ## Production deployment

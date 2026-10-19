@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { guard } from '@/lib/auth';
 import { queue } from '@/lib/queue';
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const denied = await guard(); if (denied) return denied;
   const { id } = await params; const body = await req.json().catch(() => ({}));
   const project = await db.project.findUnique({ where: { id }, include: { tracks: true } });
   if (!project || project.status !== 'ready') return NextResponse.json({ error: 'Project is not ready' }, { status: 400 });

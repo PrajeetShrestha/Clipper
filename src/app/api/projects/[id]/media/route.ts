@@ -2,9 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createReadStream, promises as fs } from 'fs';
 import { Readable } from 'stream';
 import { db } from '@/lib/db';
-import { guard } from '@/lib/auth';
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const denied = await guard(); if (denied) return denied;
   const { id } = await params; const project = await db.project.findUnique({ where: { id } });
   if (!project?.sourcePath) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   let size: number; try { size = (await fs.stat(project.sourcePath)).size; } catch { return NextResponse.json({ error: 'Media unavailable' }, { status: 404 }); }
