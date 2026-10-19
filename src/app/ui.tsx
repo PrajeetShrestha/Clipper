@@ -23,8 +23,8 @@ export default function App() {
       const xhr = new XMLHttpRequest(); xhr.open('POST', '/api/projects/upload');
       xhr.setRequestHeader('Content-Type', 'application/octet-stream'); xhr.setRequestHeader('X-Filename', encodeURIComponent(file.name));
       xhr.upload.onprogress = event => { if (event.lengthComputable) setUploadProgress(Math.round(event.loaded / event.total * 100)); };
-      xhr.onload = () => { let data; try { data = JSON.parse(xhr.responseText); } catch { reject(new Error('Upload failed')); return; } if (xhr.status >= 200 && xhr.status < 300) resolve(data); else reject(new Error(data.error || 'Upload failed')); };
-      xhr.onerror = () => reject(new Error('Upload failed')); xhr.send(file);
+      xhr.onload = () => { let data; try { data = JSON.parse(xhr.responseText); } catch { reject(new Error(`Upload failed (HTTP ${xhr.status}). Please retry.`)); return; } if (xhr.status >= 200 && xhr.status < 300) resolve(data); else reject(new Error(data.error || `Upload failed (HTTP ${xhr.status})`)); };
+      xhr.onerror = () => reject(new Error('Upload connection failed. Check your connection and retry; keep this page open until upload completes.')); xhr.onabort = () => reject(new Error('Upload was interrupted. Please retry.')); xhr.send(file);
     });
     setFile(null); setUploadProgress(0); await loadProjects(); await loadProject(d.project.id);
   } catch (e) { setError(String(e)); } finally { setBusy(false); } }
