@@ -1,0 +1,50 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url = env("DATABASE_URL")
+}
+model Project {
+  id String @id @default(cuid())
+  youtubeId String
+  sourceUrl String
+  title String @default("Importing…")
+  duration Float @default(0)
+  thumbnailUrl String?
+  status String @default("queued")
+  error String?
+  sourcePath String?
+  language String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  tracks CaptionTrack[]
+  exports Export[]
+  @@index([createdAt])
+}
+model CaptionTrack {
+  id String @id @default(cuid())
+  projectId String
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  language String
+  source String
+  cues Json
+  createdAt DateTime @default(now())
+  @@unique([projectId, language])
+}
+model Export {
+  id String @id @default(cuid())
+  projectId String
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  status String @default("queued")
+  progress Int @default(0)
+  start Float
+  end Float
+  ratio String
+  captions Boolean @default(true)
+  outputPath String?
+  error String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([projectId, createdAt])
+}

@@ -1,0 +1,20 @@
+[Unit]
+Description=Clipper media worker
+After=network-online.target docker.service redis-server.service
+Requires=docker.service
+[Service]
+Type=simple
+User=clipper
+Group=clipper
+WorkingDirectory=/opt/clipper
+EnvironmentFile=/opt/clipper/.env
+ExecStart=/opt/clipper/node_modules/.bin/tsx src/worker/index.ts
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+MemoryMax=2G
+LimitNOFILE=65536
+[Install]
+WantedBy=multi-user.target

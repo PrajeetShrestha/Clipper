@@ -1,0 +1,19 @@
+[Unit]
+Description=Clipper web app
+After=network-online.target docker.service redis-server.service
+Requires=docker.service
+[Service]
+Type=simple
+User=clipper
+Group=clipper
+WorkingDirectory=/opt/clipper
+EnvironmentFile=/opt/clipper/.env
+ExecStart=/usr/bin/node /opt/clipper/node_modules/next/dist/bin/next start -H 127.0.0.1 -p 3120
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+LimitNOFILE=65536
+[Install]
+WantedBy=multi-user.target
